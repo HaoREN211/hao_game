@@ -1,0 +1,527 @@
+{% extends '_base.html' %}
+
+{% block app_content %}
+    {# 用户列表 #}
+    <div class="row">
+        <div class="col-sm-6">
+            <div id="list_user">
+                {# 用户列表 #}
+                <table class="table table-hover"><thead><tr><th>用户</th><th>状态</th></tr></thead>
+                {% for user in users %}
+                    <tr>
+                    <td>{{ user.user.name }}</td>
+                    <td>
+                        {% if user.user.ready == "T" %}
+                            <span>已准备</span>
+                        {% else %}
+                            <span>未准备</span>
+                        {% endif %}
+                    </td>
+                    </tr>
+                {% endfor %}
+                </table>
+            </div>
+        </div>
+        <div class="col-sm-6" id="block_scores"></div>
+    </div>
+
+    {# 准备和取消准备按钮 #}
+    <div class="row" id="status">
+        {% for user in users %}
+            {% if user.user.name == current_user.real_name %}
+                {% if user.user.ready=="T" %}
+                    <input type="button" class="btn btn-xs btn-danger" value="取消准备" onclick="change_status('{{ current_user.real_name }}', 'cancel')">
+                {% else %}
+                    <input type="button" class="btn btn-xs btn-success" value="准备" onclick="change_status('{{ current_user.real_name }}', 'ready')">
+                {% endif %}
+            {% endif %}
+        {% endfor %}
+    </div>
+
+
+    {# 打牌画面 #}
+    <div class="row" id="block_card">
+        <div class="row" id="name_user_front" style="text-align: center"></div>
+        <div class="row" style="height: 150px">
+            <div class="col-sm-3">
+                <div id="name_user_left"></div>
+            </div>
+            <div class="col-sm-6">
+                <div id="block_cards" style="position: relative"></div>
+            </div>
+            <div class="col-sm-3">
+                <div id="name_user_right"></div>
+            </div>
+        </div>
+        <div class="row" id="name_user" style="text-align: center"></div>
+    </div>
+    <div style="display: none">
+        <input type="hidden" id="current_user_numero">
+        <input type="hidden" id="current_user_name">
+        <input type="hidden" id="is_che">
+        <input type="hidden" id="is_che_term">
+        <input type="hidden" id="new_term">
+
+    </div>
+{% endblock %}
+
+{% block scripts %}
+
+    <script src="{{ url_for("static",filename='js/jquery.min.js') }}"></script>
+    <script src="{{ url_for("static",filename='js/sock_io.js') }}"></script>
+
+    <script type="application/javascript">
+    var link = 'http://' + document.domain + ':' + location.port+'/game/red3';
+    var socket = io.connect(link);
+
+    {# 当新用户进房间，老用户更改准备状态时更新显示 #}
+    socket.on('recive_msg', function (res) {
+        var message = "<table class=\"table table-hover\"><thead><tr><th>用户</th><th>状态</th></tr></thead>" ;
+        for (var i=0; i<res.length; i++){
+             message += "<tr><td>"+res[i].user.name+"</td><td>";
+            if (res[i].user.ready==="T"){
+                 message += "已准备";
+            }
+            else {
+                message += "未准备"
+            }
+            message += "</td></tr>";
+         }
+         message += "</table>";
+         document.getElementById("list_user").innerHTML = message;
+    });
+
+    {# 当所有用户都准备的时候，开始打牌并显示牌 #}
+    socket.on('send_cards', function (res) {
+        document.getElementById("status").setAttribute("hidden", "hidden");
+
+        var list_user = res.users;
+        var term = res.term;
+        var nwe_term = res.new_term;
+        var last_cards = res.last_cards;
+        var last_user = res.last_user;
+        var is_che = res.is_che;
+
+        {# 显示上一轮打的牌 #}
+        if (last_cards !== null){
+            if (last_cards.length>0){
+                var block_cards_inner_html = "<p>上一轮出牌的人："+last_user+"</p>";
+                block_cards_inner_html += "<p>当前累计牌数："+res.collect+"张</p>";
+                for(var index_card=0; index_card<last_cards.length; index_card++){
+                    block_cards_inner_html += "<img src='/static/pocker/"
+                        +last_cards[index_card]+".jpg' width='100px' style='position:absolute; left:"
+                        +(index_card+1)*20+"px;  "
+                        +"id='img_"+last_cards[index_card]+"' class='last_card' name='"+last_cards[index_card]+"'>";
+                }
+                document.getElementById("block_cards").innerHTML = block_cards_inner_html;
+            }
+        }
+
+        {# 将当前的用户移动到数组的第一个元素位置上 #}
+        while(list_user[0].user.name !== "{{ current_user.real_name }}"){
+            var first_array = list_user.slice(0, -1);
+            var second_array = list_user.slice(-1);
+            list_user = second_array.concat(first_array);
+        }
+
+        {# 显示左边、对面、右面玩家的信息 #}
+        document.getElementById("name_user_right").innerHTML = "";
+        document.getElementById("name_user_front").innerHTML = "";
+        document.getElementById("name_user_left").innerHTML = "";
+        document.getElementById("name_user").innerHTML = "";
+
+        if (list_user[1].user.pass === "T"){
+            document.getElementById("name_user_right").innerHTML = "<p><span style='color:red'>跳过</span></p>"
+        }
+        else if (list_user[1].user.cards.length===0){
+            document.getElementById("name_user_right").innerHTML = "<p><span style='color:red'>已走脱</span></p>"
+        }
+        document.getElementById("name_user_right").innerHTML+="<p>"+list_user[1].user.name;
+        if (list_user[1].user.show_red===1) {
+            document.getElementById("name_user_right").innerHTML += "<span style='color:red'>红3</span>"
+        }
+        else if (list_user[1].user.show_red===2) {
+            document.getElementById("name_user_right").innerHTML += "<span style='color:red'>业务</span>";
+        }
+        document.getElementById("name_user_right").innerHTML+= "</p><p>已赢："+list_user[1].user.collect+"张</p>"
+
+
+        if (list_user[2].user.pass === "T"){
+            document.getElementById("name_user_front").innerHTML = "<p><span style='color:red'>跳过</span></p>"
+        }
+        else if (list_user[2].user.cards.length===0){
+            document.getElementById("name_user_front").innerHTML = "<p><span style='color:red'>已走脱</span></p>"
+        }
+        document.getElementById("name_user_front").innerHTML+="<p>"+list_user[2].user.name;
+        if (list_user[2].user.show_red===1) {
+            document.getElementById("name_user_front").innerHTML += "<span style='color:red'>红3</span>"
+        }
+        else if (list_user[2].user.show_red===2) {
+            document.getElementById("name_user_front").innerHTML += "<span style='color:red'>业务</span>";
+        }
+        document.getElementById("name_user_front").innerHTML+="</p><p>已赢："+list_user[2].user.collect+"张</p>";
+
+
+        if (list_user[3].user.pass === "T"){
+            document.getElementById("name_user_left").innerHTML = "<p><span style='color:red'>跳过</span></p>"
+        }
+        else if (list_user[3].user.cards.length===0){
+            document.getElementById("name_user_left").innerHTML = "<p><span style='color:red'>已走脱</span></p>"
+        }
+        document.getElementById("name_user_left").innerHTML+="<p>"+list_user[3].user.name;
+        if (list_user[3].user.show_red===1) {
+            document.getElementById("name_user_left").innerHTML += "<span style='color:red'>红3</span>"
+        }
+        else if (list_user[3].user.show_red===2) {
+            document.getElementById("name_user_left").innerHTML += "<span style='color:red'>业务</span>";
+        }
+        document.getElementById("name_user_left").innerHTML+="</p><p>已赢："+list_user[3].user.collect+"张</p>";
+
+        {# 显示牌 #}
+        var curr_user = list_user[0].user;
+
+        document.getElementById("current_user_numero").value = curr_user.numero;
+        document.getElementById("current_user_name").value = curr_user.name;
+        document.getElementById("is_che").value = res.is_che;
+        document.getElementById("is_che_term").value = res.is_che_term;
+        document.getElementById("new_term").value = res.new_term;
+
+        var cards = curr_user.cards;
+        var user_inner_html = "<p>";
+        if (list_user[0].user.pass === "T"){
+            user_inner_html = "<span style='color:red'>跳过</span></p><p>"
+        }
+        else if (list_user[0].user.cards.length===0){
+            user_inner_html = "<span style='color:red'>已走脱</span></p><p>"
+        }
+        user_inner_html += curr_user.name+"</p><p>已赢："+curr_user.collect+"张</p><div style='col-sm-6'><div style='position:relative'>";
+        for (var i =0; i<cards.length; i++){
+            user_inner_html+="<img src='/static/pocker/"
+                +cards[i][2]+".jpg' width='100px' style='position:absolute; left:"+(i+1)*20+"px; top:50px' " +
+                "id='img_"+cards[i][2]+"' class='main_card' name='"+cards[i][2]+"' onclick='click_card("+cards[i][2]+")'>";
+        }
+        user_inner_html += "</div></div>";
+
+        user_inner_html += "<div style='col-sm-6'><p>当前该：<span style='color:red'>"+res.term_name+"</span>出牌</p>";
+        {# 显示出牌按钮 #}
+        if (term === curr_user.numero){
+            user_inner_html += "<input type='button' class='btn btn-xs btn-success' value='出牌' onclick='send_card()'> "
+            {# 新一轮出牌的时候不能跳过 #}
+            if (nwe_term === "F"){
+                user_inner_html += "<input type='button' class='btn btn-xs btn-danger' value='跳过' onclick='pass()' > "
+            }
+            if (curr_user.can_surrender==="T" && curr_user.is_business==="T"){
+                user_inner_html += "<input type='button' class='btn btn-xs btn-primary' value='投降' onclick='surrender()' > "
+            }
+        }
+        user_inner_html += "</div>";
+
+        document.getElementById("name_user").innerHTML = user_inner_html;
+    })
+
+    socket.on('finish', function (res) {
+        document.getElementById("status").removeAttribute("hidden");
+        var real_name = document.getElementById("current_user_name").value;
+        document.getElementById("status").innerHTML = "<input type=\"button\" class=\"btn btn-xs btn-success\" value=\"准备\" onclick=\"change_status('"+real_name+"', 'ready')\">";
+        document.getElementById("name_user_left").innerHTML = "";
+        document.getElementById("name_user_right").innerHTML = "";
+        document.getElementById("name_user_front").innerHTML = "";
+        document.getElementById("name_user").innerHTML = "";
+        document.getElementById("block_card").innerHTML = "";
+
+        var scores = res.scores;
+        var inner = "";
+        var temp;
+        for (var i=0; i<scores.length; i++){
+            temp = "<p>"+scores[i].user.name+":"+scores[i].user.score+"</p>";
+            inner += temp
+        }
+        document.getElementById("block_scores").innerHTML = inner
+
+        alert(res.result);
+
+    })
+    </script>
+
+    <script type="application/javascript">
+        {# 点击扑克时候，向上或向下移动扑克 #}
+        function  click_card(card_no) {
+           var element_id = 'img_'+card_no;
+           var target_top = document.getElementById(element_id).style.top;
+           if (target_top === "50px"){
+               document.getElementById(element_id).style.top = "1px";
+           }
+           else {
+               document.getElementById(element_id).style.top = "50px";
+           }
+        }
+
+        {# 出牌 #}
+        function send_card(){
+            {# 当前用户手中的牌 #}
+            var main_card=document.getElementsByClassName("main_card");
+
+            {# 上一次出的牌 #}
+            var last_card=document.getElementsByClassName("last_card");
+
+            {# 统计已经被选择了的牌 #}
+            var selected_card = [];
+            var selected_card_index = [];
+            var last_card_index = [];
+            for (var i=0; i<main_card.length;i++){
+                if (main_card[i].style.top === "1px"){
+                    selected_card.push(main_card[i]);
+                    selected_card_index.push(parseInt(main_card[i].name));
+                }
+            }
+            for (var m=0; m<last_card.length; m++){
+                last_card_index.push(parseInt(last_card[m].name))
+            }
+            {# 如果没有选择牌就点出牌按钮 #}
+            if (selected_card.length === 0){
+                alert("请选择出牌")
+            }
+            else {
+                {# 是否包含四个4 #}
+                var not_contain_4_4 = false;
+                var id_4_4 = [1, 2, 3, 4];
+
+                {# 选择的牌是否合法 #}
+                var selected_legal = true;
+                for (var j=0; j<id_4_4.length; j++){
+                    if (selected_card_index.indexOf(id_4_4[j])<0){
+                        not_contain_4_4 = true;
+                        break;
+                    }
+                }
+
+                var current_user_numero = document.getElementById("current_user_numero").value;
+                var current_user_name = document.getElementById("current_user_name").value;
+                var is_che = document.getElementById("is_che").value;
+                var is_che_term = document.getElementById("is_che_term").value;
+                var curr_card = selected_card_index.join(",");
+                curr_card = verify_type(curr_card);
+                var temp_last_card = last_card_index.join(",");
+                temp_last_card = verify_type(temp_last_card);
+
+                var curr_card_type = parseInt(curr_card.split(",")[0]);
+                var curr_card_value = parseInt(curr_card.split(",")[1]);
+                var last_card_type = parseInt(temp_last_card.split(",")[0]);
+                var last_card_value = parseInt(temp_last_card.split(",")[1]);
+
+                {# 第一次出牌且不包含四个4 #}
+                if (last_card.length === 0 && not_contain_4_4 === true){
+                    var nb_4 = 0;
+                    for (var k=0; k<id_4_4.length; k++){
+                        if (selected_card_index.indexOf(id_4_4[k])>-1){
+                            nb_4 += 1;
+                        }
+                    }
+
+                    if (nb_4 !== selected_card.length || nb_4 === 2){
+                        alert("第一次只能出一个红心4或三个4");
+                        selected_legal = false;
+                    }
+                }
+                else {
+                    var new_term = document.getElementById("new_term").value;
+                    {# 非第一次出牌，但是是新一轮出牌 #}
+                    if (new_term === "T"){
+                        if (parseInt(curr_card.split(",")) === 0){
+                            selected_legal = false;
+                        }
+                    }
+                    {# 是扯的情况 #}
+                    else if (is_che_term === "T" && last_card_type === 1){
+                        if (curr_card_type!== 2 || last_card_value !== curr_card_value){
+                            selected_legal = false;
+                        }
+                    }
+                    else if (is_che_term === "T" && last_card_type === 2){
+                        {# 已经扯过就只能炸了 #}
+                        if (!((curr_card_type === 4) || (curr_card_type === 5))){
+                            selected_legal = false;
+                        }
+                    }
+                    else{
+                        {# 上一次出牌是只有一张的情况 #}
+                        if (last_card_type === 1){
+                            {# 这次也只出一张牌且牌的大小小于上次牌 #}
+                            if (curr_card_type === 1 && curr_card_value<=last_card_value){
+                                selected_legal = false;
+                            }
+                            else if (curr_card_type===2 || curr_card_type ===3){
+                               selected_legal = false;
+                            }
+                        }
+                        {# 上次出对子的情况 #}
+                        else if (last_card_type === 2){
+                            {# 这次出个个或者连子 #}
+                            if (curr_card_type===1 || curr_card_type ===3){
+                               selected_legal = false;
+                            }
+                            {# 这次也出对子但是对子比上次对子小或者牌数不对 #}
+                            else if (curr_card_type === 2 && curr_card_value<=last_card_value){
+                                selected_legal = false;
+                            }
+                        }
+                        {# 上次出连子 #}
+                        else if (last_card_type === 3){
+                            {# 这次出个个或者对子 #}
+                            if (curr_card_type===1 || curr_card_type ===2){
+                               selected_legal = false;
+                            }
+                            {# 这次也出连连但是对子比上次连连小或者牌数不对 #}
+                            else if (curr_card_type === 3 && (curr_card_value<=last_card_value || last_card_index.length!==selected_card_index.length)){
+                                selected_legal = false;
+                            }
+                        }
+                        {# 上次出炸弹 #}
+                        else if (last_card_type === 4){
+                            if (curr_card_type===1 || curr_card_type ===2 || curr_card_type ===3){
+                               selected_legal = false;
+                            }
+                            else if (curr_card_type === 4 && curr_card_value<=last_card_value){
+                                selected_legal = false;
+                            }
+                        }
+                        {# 上次出氢弹 #}
+                        else if (last_card_type === 5){
+                            if (curr_card_type===1 || curr_card_type ===2 || curr_card_type ===3 || curr_card_type ===4){
+                               selected_legal = false;
+                            }
+                            else if (curr_card_type === 5 && curr_card_value<=last_card_value){
+                                selected_legal = false;
+                            }
+                        }
+                    }
+                }
+
+                {# 选择的牌合法，出牌 #}
+                if (selected_legal){
+                    var link = 'http://' + document.domain + ':' + location.port+'/game/red3';
+                    var socket = io.connect(link);
+                    socket.emit("send_card", {name: current_user_name, numero: current_user_numero, cards: selected_card_index})
+                }
+                else{
+                    alert("选择的牌不合法，请重新出牌");
+                }
+            }
+        }
+
+        {# 跳过 #}
+        function pass(){
+            var current_user_numero = document.getElementById("current_user_numero").value;
+            var current_user_name = document.getElementById("current_user_name").value;
+            socket.emit("pass", {name: current_user_name, numero: current_user_numero})
+        }
+
+        {# 根据牌的索引，判断牌的大小 #}
+        function get_card_value(card) {
+            var temp = parseInt(card)-1;
+            if (temp < 4){
+                return 0;
+            }
+            return parseInt((parseInt(card)-1)/4)
+        }
+
+        {# 返回当前牌的类型，0不合法，1单单，2对对，3连子，4炸弹，5氢弹 #}
+        function verify_type(cards){
+            var selected_card_index = [];
+            var list_temp_card = cards.split(",");
+            for (var i=0; i<list_temp_card.length; i++){
+                selected_card_index.push(parseInt(list_temp_card[i]))
+            }
+            var temp_value = selected_card_index[0];
+            temp_value = get_card_value(temp_value);
+
+            {# 如果出牌只有一张的话 #}
+            if (selected_card_index.length === 1){
+                return '1,'+temp_value.toString()
+            }
+            else {
+                {# 出的牌是否是炸弹或对子 #}
+                var is_boom = true;
+                if (selected_card_index.length === 2 || selected_card_index.length === 3 || selected_card_index.length === 4){
+                    var first_index = get_card_value(selected_card_index[0]);
+                    var second_index;
+                    for (var index_boom=1; index_boom<selected_card_index.length; index_boom++){
+                        second_index = get_card_value(selected_card_index[index_boom]);
+                        if (first_index !== second_index){
+                            is_boom = false;
+                            break;
+                        }
+                    }
+                }
+                if (is_boom && selected_card_index.length <=4){
+                    if (selected_card_index.length === 2){
+                        return '2,'+temp_value.toString()
+                    }
+                    if (selected_card_index.length === 3){
+                        return '4,'+temp_value.toString()
+                    }
+                    if (selected_card_index.length === 4){
+                        return '5,'+temp_value.toString()
+                    }
+                }
+
+                if (selected_card_index.length < 5){
+                    return "0,0";
+                }
+
+                {# 出的牌不是炸弹或对子 #}
+                var list_card = [];
+                var curr;
+                var min=20;
+                var max=-1;
+                for (var index_card=0; index_card<selected_card_index.length; index_card++){
+                    curr = parseInt((parseInt(selected_card_index[index_card])-1)/4);
+                    if (curr>max){
+                        max = curr;
+                    }
+                    if (curr<min){
+                        min = curr
+                    }
+                    list_card.push(curr);
+                }
+                {# 如果连子最大超过了2则不合法 #}
+                if (max>10){
+                    return "0,0"
+                }
+                else{
+                    {# 判断卡中的数字是否是连续的 #}
+                    var should_length = (max-min)+1;
+                    if (should_length===list_card.length){
+                        for (var index_i=min; index_i<=max; index_i++){
+                            if (list_card.indexOf(index_i)<0){
+                                return "0,0"
+                            }
+                        }
+                    }
+                    return "3,"+min.toString();
+                }
+            }
+            return "0,0"
+        }
+
+        {# 投降 #}
+        function surrender(){
+            var current_user_numero = document.getElementById("current_user_numero").value;
+            var current_user_name = document.getElementById("current_user_name").value;
+            socket.emit("surrender", {name: current_user_name, numero: current_user_numero})
+        }
+
+        function change_status(real_name, action){
+            var link = 'http://' + document.domain + ':' + location.port+'/game/red3';
+            var socket = io.connect(link);
+            if (action==="cancel") {
+                document.getElementById("status").innerHTML = "<input type=\"button\" class=\"btn btn-xs btn-success\" value=\"准备\" onclick=\"change_status('"+real_name+"', 'ready')\">";
+                socket.emit('change_status',{name:real_name,'action':action})
+            }
+            else {
+                document.getElementById("status").innerHTML = "<input type=\"button\" class=\"btn btn-xs btn-danger\" value=\"取消准备\" onclick=\"change_status('"+real_name+"', 'cancel')\">";
+                socket.emit('change_status',{name:real_name,'action':action})
+            }
+        }
+    </script>
+{% endblock %}

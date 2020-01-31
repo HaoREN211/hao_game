@@ -1,0 +1,65 @@
+{% extends 'bootstrap/base.html' %}
+
+    {% block head %}
+        {{ super() }}
+        <link rel="shortcut icon" href="/favicon.ico" type="image/x-icon">
+        <link rel="icon" href="/favicon.ico" type="image/x-icon">
+    {% endblock %}
+
+    {% block title %}
+        {{ super() }}
+        {% if title %}
+            {{ title }}
+        {% else %}
+            红3
+        {% endif %}
+    {% endblock %}
+
+    {% block navbar %}
+        <div class="navbar navbar-inverse" role="navigation">
+            <div class="container">
+                <div class="navbar-header">
+                    <button type="button" class="navbar-toggle"
+                    data-toggle="collapse" data-target=".navbar-collapse">
+                        <span class="sr-only">Toggle navigation</span>
+                        <span class="icon-bar"></span>
+                        <span class="icon-bar"></span>
+                        <span class="icon-bar"></span>
+                    </button>
+                    {% if current_user.is_anonymous %}
+                        <a class="navbar-brand" href="{{ url_for('auth.login') }}">登录</a>
+                    {% endif %}
+                </div>
+                <div class="navbar-collapse collapse">
+                    <ul class="nav navbar-nav navbar-right">
+
+                        {% if not current_user.is_anonymous %}
+                            {% if current_user.is_admin %}
+                                <li><a href="{{ url_for('auth.register') }}">注册</a> </li>
+                            {% endif %}
+                            <li>
+                                <a href="{{ url_for('auth.logout') }}">登出</a>
+                            </li>
+                        {% endif %}
+                    </ul>
+                </div>
+            </div>
+        </div>
+    {% endblock %}
+
+
+    {% block content %}
+        <div class="container">
+            {% with messages = get_flashed_messages() %}
+            {% if messages %}
+                {% for message in messages %}
+                <div class="alert alert-info" role="alert">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+            {% endwith %}
+
+            {# application content needs to be provided in the app_content block #}
+            {% block app_content %}{% endblock %}
+        </div>
+
+    {% endblock %}

@@ -1,0 +1,1 @@
+[{"user": {"name": "任皓", "score": 0}}, {"user": {"name": "测试账号", "score": 0}}, {"user": {"name": "测试1", "score": 0}}, {"user": {"name": "测试2", "score": 0}}]
